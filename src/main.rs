@@ -19,22 +19,26 @@ fn main() {
         match stream {
             Ok(mut stream) => {
                 let mut buf = [0; 1024];
-                let _ = stream.read(&mut buf).unwrap();
-                // let s = match str::from_utf8(&buf) {
-                //     Ok(v) => v,
-                //     Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
-                // };
-
-                // println!("result: {}", s);
 
                 println!("accepted new connection");
+                loop {
+                    let n = stream.read(&mut buf).expect("Could not read from stream");
+                    if n == 0 {
+                        continue;
+                    }
 
-                // let mut res = s.chars().rev().collect::<String>();
-                // res.push('\n');
+                    let s = match str::from_utf8(&buf) {
+                        Ok(v) => v,
+                        Err(e) => panic!("Invalid UTF-8 sequence: {}", e),
+                    };
 
-                stream
-                    .write_all("+PONG\r\n".as_bytes())
-                    .expect("could not write to buffer");
+                    stream
+                        .write_all("+PONG\r\n".as_bytes())
+                        .expect("could not write to buffer");
+
+                    println!("Got message from connection: {}", s);
+                    println!("Responding with: pong");
+                }
             }
             Err(e) => {
                 println!("error: {}", e);

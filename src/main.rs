@@ -1,7 +1,7 @@
 use std::str;
 
 use tokio::{
-    io::AsyncWriteExt,
+    io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
 };
 
@@ -24,12 +24,26 @@ async fn main() {
 
     loop {
         let (stream, _) = listener.accept().await.unwrap();
-        process(stream).await;
+        // A new task is spawned for each inbound socket. The socket is
+        // moved to the new task and processed there.
+        tokio::spawn(async move {
+            process(stream).await;
+        });
     }
 }
 
 async fn process(mut stream: TcpStream) {
-    handle_command(Command::Ping, &mut stream).await;
+    let mut buf = [0; 1024];
+
+    loop {
+        let s = stream.read(&mut buf).await.expect("Could not read message");
+
+        if s == 0 {
+            continue;
+        }
+
+        handle_command(Command::Ping, &mut stream).await;
+    }
 }
 
 async fn handle_command(command: Command, stream: &mut TcpStream) {

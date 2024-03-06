@@ -3,7 +3,7 @@ use bytes::{Buf, Bytes, BytesMut};
 use self::{
     array::{array, array_with_partial, RespArray, RespArrayConcrete, RespArrayPartial},
     int::{int, RespInt, RespIntConcrete, RespIntPartial},
-    string::{string, string_with_partial, RespString, RespStringConcrete, RespStringPartial},
+    string::{string, string_with_partial, RespString, RespBulkStringConcrete, RespBulkStringPartial},
 };
 
 pub mod array;
@@ -32,14 +32,14 @@ pub enum Resp {
 pub enum RespConcreteType {
     Array(RespArrayConcrete),
     Int(RespIntConcrete),
-    String(RespStringConcrete),
+    BulkString(RespBulkStringConcrete),
 }
 
 #[derive(Debug)]
 pub enum RespTypePartialable {
     Array(RespArrayPartial),
     Int(RespIntPartial),
-    String(RespStringPartial),
+    BulkString(RespBulkStringPartial),
 }
 
 #[derive(Debug)]
@@ -85,11 +85,11 @@ pub fn parse(buf: &mut BytesMut, partial: Option<RespTypePartialable>) -> Result
                 RespInt::Concrete(r) => Ok(Resp::Concrete(RespConcreteType::Int(r))),
                 RespInt::Partial(partial) => Ok(Resp::Partial(RespTypePartialable::Int(partial))),
             },
-            RespTypePartialable::String(partial_string) => {
+            RespTypePartialable::BulkString(partial_string) => {
                 match string_with_partial(buf, partial_string)? {
-                    RespString::Concrete(r) => Ok(Resp::Concrete(RespConcreteType::String(r))),
+                    RespString::Concrete(r) => Ok(Resp::Concrete(RespConcreteType::BulkString(r))),
                     RespString::Partial(partial) => {
-                        Ok(Resp::Partial(RespTypePartialable::String(partial)))
+                        Ok(Resp::Partial(RespTypePartialable::BulkString(partial)))
                     }
                 }
             }
@@ -106,9 +106,9 @@ pub fn parse(buf: &mut BytesMut, partial: Option<RespTypePartialable>) -> Result
                 RespInt::Partial(partial) => Ok(Resp::Partial(RespTypePartialable::Int(partial))),
             },
             b'$' => match string(buf)? {
-                RespString::Concrete(r) => Ok(Resp::Concrete(RespConcreteType::String(r))),
+                RespString::Concrete(r) => Ok(Resp::Concrete(RespConcreteType::BulkString(r))),
                 RespString::Partial(partial) => {
-                    Ok(Resp::Partial(RespTypePartialable::String(partial)))
+                    Ok(Resp::Partial(RespTypePartialable::BulkString(partial)))
                 }
             },
             b'\n' => {

@@ -8,23 +8,23 @@ use super::{
 
 #[derive(Debug)]
 pub enum RespString {
-    Concrete(RespStringConcrete),
-    Partial(RespStringPartial),
+    Concrete(RespBulkStringConcrete),
+    Partial(RespBulkStringPartial),
 }
 
-pub type RespStringConcrete = String;
+pub type RespBulkStringConcrete = String;
 
 #[derive(Debug)]
-pub struct RespStringPartial {
+pub struct RespBulkStringPartial {
     length: RespInt,
     string: Bytes,
 }
 
 pub fn string_with_partial(
     buf: &mut BytesMut,
-    partial: RespStringPartial,
+    partial: RespBulkStringPartial,
 ) -> Result<RespString, RespError> {
-    let RespStringPartial {
+    let RespBulkStringPartial {
         length,
         string: partial_string,
     } = partial;
@@ -37,7 +37,7 @@ pub fn string_with_partial(
             RespInt::Concrete(i) => i,
             // if partial length received, then return partial string with updated partial length
             RespInt::Partial(partial) => {
-                return Ok(RespString::Partial(RespStringPartial {
+                return Ok(RespString::Partial(RespBulkStringPartial {
                     length: RespInt::Partial(partial),
                     string: partial_string,
                 }))
@@ -75,7 +75,7 @@ pub fn string_with_length(
         // return partial string with concrete length but partial string
         Word::Partial(word) => {
             let concatenated_bytes = Bytes::from([partial_string.as_ref(), word.as_ref()].concat());
-            Ok(RespString::Partial(RespStringPartial {
+            Ok(RespString::Partial(RespBulkStringPartial {
                 length: RespInt::Concrete(length as i64),
                 string: concatenated_bytes,
             }))
@@ -92,7 +92,7 @@ pub fn string(buf: &mut BytesMut) -> Result<RespString, RespError> {
         RespInt::Concrete(i) => i,
         // if partial length received, then return partial string with updated partial length
         RespInt::Partial(partial) => {
-            return Ok(RespString::Partial(RespStringPartial {
+            return Ok(RespString::Partial(RespBulkStringPartial {
                 length: RespInt::Partial(partial),
                 string: partial_string,
             }))

@@ -1,35 +1,18 @@
+# Redox
+Redox is a toy redis implementation in Rust.
+
+## Features
+Largely incomplete (still a toy so far), but some cool stuff
+### Partial RESP Parsing
+Redox implements Partial RESP parsing, which as I understand is not the most common way of implementing the parser. I am not sure if the official implementations use partial parsing. This allows for a fixed size buffer to be consumed and parsed into a partial state, so that the buffer can now be cleared and filled again to a fixed size, rather than throwing away all the parsing work, growing the buffer, and attempting to parse again. This probably has some benefits if you are trying to store humungous stuff into redis, (not benchmarked, could be wrong), but probably has a negligible impact on day to day perfomance. (Just fill out the buffer completely).
+
+This was my first combinator parser though, and I thought partial parsing would be cool to attempt, which is really the only reason I built it. Rust's type system is incredibly expressive and helps reason about the parsing very clearly.
+
+
+### Other features
+No real other notable features. Only supported actions right now are SET, GET, ECHO, PING, and also expiry for the SET/GET.
+I plan to complete all stages, so will eventually add support for replication, persistence, and streams.
+
+# Codecrafters Progress
+(Codecrafters is pretty cool btw)
 [![progress-banner](https://backend.codecrafters.io/progress/redis/d94ebcc3-a895-456f-8b97-c9ff31c6bf74)](https://app.codecrafters.io/users/codecrafters-bot?r=2qF)
-
-This is a starting point for Rust solutions to the
-["Build Your Own Redis" Challenge](https://codecrafters.io/challenges/redis).
-
-In this challenge, you'll build a toy Redis clone that's capable of handling
-basic commands like `PING`, `SET` and `GET`. Along the way we'll learn about
-event loops, the Redis protocol and more.
-
-**Note**: If you're viewing this repo on GitHub, head over to
-[codecrafters.io](https://codecrafters.io) to try the challenge.
-
-# Passing the first stage
-
-The entry point for your Redis implementation is in `src/main.rs`. Study and
-uncomment the relevant code, and push your changes to pass the first stage:
-
-```sh
-git add .
-git commit -m "pass 1st stage" # any msg
-git push origin master
-```
-
-That's all!
-
-# Stage 2 & beyond
-
-Note: This section is for stages 2 and beyond.
-
-1. Ensure you have `cargo (1.54)` installed locally
-1. Run `./spawn_redis_server.sh` to run your Redis server, which is implemented
-   in `src/main.rs`. This command compiles your Rust project, so it might be
-   slow the first time you run it. Subsequent runs will be fast.
-1. Commit your changes and run `git push origin master` to submit your solution
-   to CodeCrafters. Test output will be streamed to your terminal.

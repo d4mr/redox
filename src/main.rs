@@ -5,7 +5,7 @@ use resp::RespConcreteType;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
-    sync::Mutex,
+    sync::RwLock,
 };
 
 use std::time::{Duration, SystemTime};
@@ -37,7 +37,7 @@ enum CommandError {
     BadExpiry(String),
 }
 
-type Storage = Arc<Mutex<HashMap<String, StorageValue>>>;
+type Storage = Arc<RwLock<HashMap<String, StorageValue>>>;
 
 const INTERFACE: &str = "127.0.0.1";
 const PORT: &str = "6379";
@@ -54,7 +54,7 @@ async fn main() {
 
     println!("Listening at {}", listener.local_addr().unwrap());
 
-    let storage: Storage = Arc::new(Mutex::new(HashMap::new()));
+    let storage: Storage = Arc::new(RwLock::new(HashMap::new()));
 
     loop {
         let (stream, addr) = listener.accept().await.unwrap();
@@ -116,8 +116,6 @@ fn parse_command(res: RespConcreteType) -> Result<Command, CommandError> {
                         return Err(CommandError::BadLength(array.len()));
                     }
 
-                    dbg!(&array);
-
                     let key = array.pop_front();
                     let value = array.pop_front();
 
@@ -142,8 +140,6 @@ fn parse_command(res: RespConcreteType) -> Result<Command, CommandError> {
                         }
                         _ => None,
                     };
-
-                    dbg!(&key, &value, &expiry_at);
 
                     match (key, value) {
                         (
@@ -231,7 +227,7 @@ async fn handle_command(command: Command, stream: &mut TcpStream, storage: Stora
             value,
             expiry_at,
         }) => {
-            let mut storage = storage.lock().await;
+            let mut storage = storage.write().await;
 
             storage.insert(key, StorageValue { expiry_at, value });
             stream
@@ -240,15 +236,19 @@ async fn handle_command(command: Command, stream: &mut TcpStream, storage: Stora
                 .expect("could not write to buffer");
         }
         Command::Get(key) => {
-            let storage = storage.lock().await;
-            let value = storage.get(&key);
-            dbg!(value);
+            let rstorage = storage.read().await;
+            let value = rstorage.get(&key);
+
             match value {
                 Some(value) => {
                     let expiry_at = value.expiry_at;
                     if let Some(expiry_at) = expiry_at {
                         let now = SystemTime::now();
                         if now > expiry_at {
+                            drop(rstorage);
+                            let mut storage = storage.write().await;
+                            storage.remove(&key);
+
                             return stream
                                 .write_all("$-1\r\n".as_bytes())
                                 .await

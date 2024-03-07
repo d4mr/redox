@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use bytes::BytesMut;
 
 use super::{
@@ -10,7 +12,7 @@ pub enum RespArray {
     Partial(RespArrayPartial),
 }
 
-pub type RespArrayConcrete = Vec<RespConcreteType>;
+pub type RespArrayConcrete = VecDeque<RespConcreteType>;
 
 #[derive(Debug)]
 pub struct RespArrayPartial {
@@ -79,7 +81,7 @@ pub fn array_with_partial(
 
 fn array_with_length(
     buf: &mut BytesMut,
-    mut concrete_array: RespArrayConcrete,
+    mut concrete_array: Vec<RespConcreteType>,
     length: usize,
 ) -> Result<RespArray, RespError> {
     while concrete_array.len() < length && !buf.is_empty() {
@@ -108,7 +110,7 @@ fn array_with_length(
             partial_item: None,
         })),
 
-        false => Ok(RespArray::Concrete(concrete_array)),
+        false => Ok(RespArray::Concrete(VecDeque::from(concrete_array))),
     }
 }
 

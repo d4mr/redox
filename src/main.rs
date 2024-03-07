@@ -8,22 +8,36 @@ use tokio::{
     sync::Mutex,
 };
 
+use std::time::{Duration, SystemTime};
 use std::{collections::HashMap, sync::Arc};
 
 enum Command {
     Ping,
-    Set(String, String),
+    Set(SetCommand),
     Get(String),
     Echo(String),
     Error(Bytes),
 }
 
+struct SetCommand {
+    key: String,
+    value: String,
+    expiry_at: Option<SystemTime>,
+}
+
+#[derive(Debug)]
+struct StorageValue {
+    value: String,
+    expiry_at: Option<SystemTime>,
+}
+
 enum CommandError {
     UnknownCommand(String),
     BadLength(usize),
+    BadExpiry(String),
 }
 
-type Storage = Arc<Mutex<HashMap<String, String>>>;
+type Storage = Arc<Mutex<HashMap<String, StorageValue>>>;
 
 const INTERFACE: &str = "127.0.0.1";
 const PORT: &str = "6379";
@@ -54,7 +68,7 @@ async fn main() {
     }
 }
 
-async fn process(mut stream: TcpStream, storage: Arc<Mutex<HashMap<String, String>>>) {
+async fn process(mut stream: TcpStream, storage: Storage) {
     let mut buf = BytesMut::with_capacity(20);
     let mut partial: Option<resp::RespTypePartialable> = None;
 
@@ -88,39 +102,69 @@ async fn process(mut stream: TcpStream, storage: Arc<Mutex<HashMap<String, Strin
 
 fn parse_command(res: RespConcreteType) -> Result<Command, CommandError> {
     match res {
-        RespConcreteType::Array(mut array) => match &array[0] {
-            RespConcreteType::BulkString(command) => match command.to_lowercase().as_str() {
+        RespConcreteType::Array(mut array) => match array.pop_front() {
+            Some(RespConcreteType::BulkString(command)) => match command.to_lowercase().as_str() {
                 "ping" => Ok(Command::Ping),
-                "echo" => match &array[1] {
+                "echo" => match &array[0] {
                     RespConcreteType::BulkString(arg) => Ok(Command::Echo(arg.to_string())),
                     _ => Err(CommandError::UnknownCommand(
                         "Invalid Echo Command".to_string(),
                     )),
                 },
                 "set" => {
-                    if array.len() != 3 {
+                    if array.len() < 2 {
                         return Err(CommandError::BadLength(array.len()));
                     }
 
-                    let value = array.pop();
-                    let key = array.pop();
+                    dbg!(&array);
+
+                    let key = array.pop_front();
+                    let value = array.pop_front();
+
+                    let expiry_at = match array.pop_front() {
+                        Some(RespConcreteType::BulkString(exp)) => {
+                            if exp.to_ascii_lowercase().as_str() == "px" {
+                                let time = array.pop_front();
+                                match time {
+                                    Some(RespConcreteType::BulkString(time)) => {
+                                        let time = time
+                                            .parse::<u64>()
+                                            .map_err(|_| CommandError::BadExpiry(time))?;
+
+                                        SystemTime::now().checked_add(Duration::from_millis(time))
+                                    }
+                                    _ => return Err(CommandError::BadLength(array.len())),
+                                }
+                            } else {
+                                // todo handle error of unknown args
+                                return Err(CommandError::BadLength(array.len()));
+                            }
+                        }
+                        _ => None,
+                    };
+
+                    dbg!(&key, &value, &expiry_at);
 
                     match (key, value) {
                         (
                             Some(RespConcreteType::BulkString(key)),
                             Some(RespConcreteType::BulkString(value)),
-                        ) => Ok(Command::Set(key, value)),
+                        ) => Ok(Command::Set(SetCommand {
+                            key,
+                            value,
+                            expiry_at,
+                        })),
                         _ => Err(CommandError::UnknownCommand(
                             "Invalid Set Command".to_string(),
                         )),
                     }
                 }
                 "get" => {
-                    if array.len() != 2 {
+                    if array.len() != 1 {
                         return Err(CommandError::BadLength(array.len()));
                     }
 
-                    let key = array.pop();
+                    let key = array.pop_front();
 
                     match key {
                         Some(RespConcreteType::BulkString(key)) => Ok(Command::Get(key)),
@@ -162,11 +206,7 @@ fn parse_command(res: RespConcreteType) -> Result<Command, CommandError> {
 //     }
 // }
 
-async fn handle_command(
-    command: Command,
-    stream: &mut TcpStream,
-    storage: Arc<Mutex<HashMap<String, String>>>,
-) {
+async fn handle_command(command: Command, stream: &mut TcpStream, storage: Storage) {
     match command {
         Command::Ping => {
             stream
@@ -186,9 +226,14 @@ async fn handle_command(
                 .await
                 .expect("could not write to buffer");
         }
-        Command::Set(key, value) => {
+        Command::Set(SetCommand {
+            key,
+            value,
+            expiry_at,
+        }) => {
             let mut storage = storage.lock().await;
-            storage.insert(key, value);
+
+            storage.insert(key, StorageValue { expiry_at, value });
             stream
                 .write_all("+OK\r\n".as_bytes())
                 .await
@@ -197,10 +242,24 @@ async fn handle_command(
         Command::Get(key) => {
             let storage = storage.lock().await;
             let value = storage.get(&key);
+            dbg!(value);
             match value {
                 Some(value) => {
+                    let expiry_at = value.expiry_at;
+                    if let Some(expiry_at) = expiry_at {
+                        let now = SystemTime::now();
+                        if now > expiry_at {
+                            return stream
+                                .write_all("$-1\r\n".as_bytes())
+                                .await
+                                .expect("could not write to buffer");
+                        }
+                    }
+
                     stream
-                        .write_all(format!("${}\r\n{}\r\n", value.len(), value).as_bytes())
+                        .write_all(
+                            format!("${}\r\n{}\r\n", value.value.len(), value.value).as_bytes(),
+                        )
                         .await
                         .expect("could not write to buffer");
                 }

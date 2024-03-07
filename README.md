@@ -8,6 +8,8 @@ Redox implements Partial RESP parsing, which as I understand is not the most com
 
 This was my first combinator parser though, and I thought partial parsing would be cool to attempt, which is really the only reason I built it. Rust's type system is incredibly expressive and helps reason about the parsing very clearly.
 
+> [!IMPORTANT]  
+> Line 71 at [main.rs](src/main.rs) (), you can see that the buffer is opened with a fixed length of 20. This is not sufficient for any parsing really. It's just set to a small value to flex my partial parser :p
 
 ### Other features
 No real other notable features. Only supported actions right now are SET, GET, ECHO, PING, and also expiry for the SET/GET.
